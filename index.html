@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>1分動画たんご帳</title>
+<style>
+  :root{
+    --bg:#f6f3ee; --card:#fffdf9; --ink:#23262b; --sub:#6b6f76; --line:#e3ddd3;
+    --accent:#1f7a6d; --accent-soft:#dff0ec; --warn:#c2552d; --mark:#fff1b8; --known:#f6d7c9;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    -webkit-text-size-adjust:100%}
+  button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);
+    border-radius:12px;padding:10px 14px;min-height:44px;touch-action:manipulation}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  button.ghost{background:transparent}
+  button.danger{color:var(--warn);border-color:#ecc8b8}
+  input,textarea,select{font:inherit;color:inherit;border:1px solid var(--line);border-radius:10px;
+    background:#fff;padding:10px 12px;min-height:44px;width:100%}
+  textarea{min-height:160px;resize:vertical;line-height:1.5}
+  header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:8px;padding:10px 16px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0 12px 0 0;letter-spacing:.02em}
+  nav{display:flex;gap:6px;flex-wrap:wrap}
+  nav button{border-radius:999px;padding:8px 16px}
+  nav button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  main{padding:20px 24px;max-width:1500px;margin:0 auto}
+  section[hidden]{display:none}
+  .muted{color:var(--sub);font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+
+  /* 動画を見る */
+  .watch{display:grid;grid-template-columns:1fr;gap:16px}
+  @media (min-width:900px){ .watch{grid-template-columns:minmax(0,62%) 1fr} .watch>div:last-child{position:sticky;top:76px;align-self:start} .cues-box{max-height:calc(100vh - 140px)} }
+  .player-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#111;border-radius:14px;overflow:hidden}
+  .player-wrap iframe,#player{position:absolute;inset:0;width:100%;height:100%}
+  .empty-player{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ddd;
+    text-align:center;padding:20px;font-size:15px;line-height:1.6}
+  @media (min-width:900px){ .player-wrap{width:min(100%, calc((100vh - 290px) * 16 / 9))} }
+  .seg-bar{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .seg-label{font-weight:700;font-size:18px;min-width:120px;text-align:center;font-variant-numeric:tabular-nums}
+  .seg-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .seg-chips button{min-height:36px;padding:4px 10px;border-radius:999px;font-size:14px;font-variant-numeric:tabular-nums}
+  .seg-chips button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .free-start{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
+  .free-start input{width:110px}
+  .cues-box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:8px 6px;overflow:auto;max-height:60vh}
+  .cue{display:flex;gap:10px;padding:10px 10px;border-radius:10px;line-height:1.75;font-size:19px}
+  .cue .ts{flex:none;font-size:13px;color:var(--sub);padding-top:6px;font-variant-numeric:tabular-nums;width:40px}
+  .cue.now{background:var(--accent-soft)}
+  .w{border-radius:6px;padding:1px 1px;-webkit-tap-highlight-color:transparent;cursor:pointer}
+  .w:hover{background:#efe7d6}
+  .cues-box{user-select:text}
+  button:hover{filter:brightness(.97)}
+  kbd{font:12px ui-monospace,Menlo,monospace;background:#fff;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
+  .keys{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--sub);margin-top:14px}
+  .vwords{margin-top:16px}
+  .vwords .list{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .vwords .list button{min-height:34px;padding:4px 12px;border-radius:999px;font-size:15px}
+  .w.known{background:var(--known);box-shadow:inset 0 -2px 0 #e2a184}
+  .w.sel{background:var(--mark);box-shadow:inset 0 -2px 0 #e0b400}
+  .hint{font-size:13px;color:var(--sub);margin:4px 8px 8px}
+
+  .action-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:30;
+    background:var(--ink);color:#fff;border-radius:18px;padding:10px;display:flex;gap:8px;align-items:center;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:center}
+  .action-bar[hidden]{display:none}
+  .action-bar .sel-text{font-weight:700;font-size:18px;padding:0 8px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .action-bar button{background:#3a3e45;border-color:#3a3e45;color:#fff}
+  .action-bar button.primary{background:var(--accent);border-color:var(--accent)}
+
+  /* 単語リスト */
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .chips button{border-radius:999px;min-height:38px;padding:6px 14px}
+  .chips button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+  .wcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;text-align:left;
+    display:flex;flex-direction:column;gap:6px;min-height:120px}
+  .wcard .tag{align-self:flex-start}
+  .wcard .word{font-size:22px;font-weight:700}
+  .wcard .mean{font-size:14px;color:var(--sub);line-height:1.4}
+  .tag{display:inline-block;font-size:12px;border-radius:999px;padding:2px 8px;background:#eee6da;color:#5b4e3c}
+  .wcard .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--sub)}
+
+  /* 動画追加 */
+  .form{display:grid;gap:12px;max-width:820px}
+  .form label{font-weight:600;font-size:14px;display:grid;gap:6px}
+  .help{background:#efe9df;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.7}
+  .vlist{display:grid;gap:8px;max-width:820px;margin-top:8px}
+  .vrow{display:flex;gap:10px;align-items:center;justify-content:space-between;background:var(--card);
+    border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+
+  /* モーダル */
+  .modal{position:fixed;inset:0;background:rgba(20,22,25,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+  @media (min-width:700px){ .modal{align-items:center} }
+  .modal[hidden]{display:none}
+  .sheet{background:var(--card);width:100%;max-width:640px;max-height:88vh;overflow:auto;border-radius:20px 20px 0 0;padding:20px}
+  @media (min-width:700px){ .sheet{border-radius:20px} }
+  .sheet h2{margin:0 0 4px;font-size:26px}
+  .sheet .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .scene{display:block;width:100%;text-align:left;margin-top:8px;line-height:1.6}
+  .scene .meta{font-size:12px;color:var(--sub)}
+  .scene mark{background:var(--mark);border-radius:4px;padding:0 2px}
+  .btnlike span{display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 14px;min-height:44px;cursor:pointer;font-weight:400}
+  .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+    padding:10px 16px;border-radius:12px;z-index:60;font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>1分動画たんご帳</h1>
+  <nav>
+    <button data-view="watch" class="on">▶ 動画を見る</button>
+    <button data-view="words">★ 単語リスト</button>
+    <button data-view="add">＋ 動画を追加</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 動画を見る -->
+  <section id="view-watch">
+    <div class="watch">
+      <div>
+        <select id="videoSelect" aria-label="動画をえらぶ" style="margin-bottom:10px"></select>
+        <div class="player-wrap">
+          <div id="player"></div>
+          <div class="empty-player" id="emptyPlayer">「＋ 動画を追加」から<br>YouTube動画と字幕を登録してください</div>
+        </div>
+        <div class="seg-bar">
+          <button id="prevSeg">◀ 前の1分</button>
+          <span class="seg-label" id="segLabel">0:00〜1:00</span>
+          <button id="nextSeg">次の1分 ▶</button>
+          <button id="replaySeg" class="primary">↺ この1分を再生</button>
+        </div>
+        <div class="seg-chips" id="segChips"></div>
+        <div class="free-start">
+          <span class="muted">好きな場面から1分：</span>
+          <input id="startInput" placeholder="例 2:30" inputmode="numeric">
+          <button id="startGo">ここから</button>
+          <button id="startNow">今の位置から</button>
+        </div>
+        <div class="keys">
+          <span><kbd>space</kbd> 再生／一時停止</span>
+          <span><kbd>←</kbd><kbd>→</kbd> 前／次の1分</span>
+          <span><kbd>R</kbd> 選んだ単語を2秒前から</span>
+          <span><kbd>S</kbd> 保存</span>
+          <span><kbd>esc</kbd> 選択を解除</span>
+        </div>
+        <div class="vwords card" id="vwords" hidden>
+          <b>この動画で保存した単語</b> <span class="muted">クリックで2秒前から再生</span>
+          <div class="list" id="vwordList"></div>
+        </div>
+      </div>
+      <div>
+        <div class="hint">単語をクリックで選択。熟語は、同じ行のもう1語をクリックするか、マウスでなぞって選びます。<span style="background:var(--known);border-radius:4px;padding:0 4px">色つき</span>は保存ずみの単語。</div>
+        <div class="cues-box" id="cuesBox"></div>
+      </div>
+    </div>
+    <div class="action-bar" id="actionBar" hidden>
+      <span class="sel-text" id="selText"></span>
+      <button id="actRepeat">🔁 2秒前から聞く</button>
+      <button id="actSave" class="primary">★ 保存</button>
+      <button id="actClose" aria-label="とじる">✕</button>
+    </div>
+  </section>
+
+  <!-- 単語リスト -->
+  <section id="view-words" hidden>
+    <div class="chips" id="catChips"></div>
+    <div class="chips" id="sortChips"></div>
+    <div class="grid" id="wordGrid"></div>
+    <p class="muted" id="wordEmpty" hidden>まだ単語がありません。動画の字幕で単語をタップして「★ 保存」してください。</p>
+  </section>
+
+  <!-- 動画を追加 -->
+  <section id="view-add" hidden>
+    <div class="form card">
+      <label>YouTubeのURL
+        <input id="addUrl" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+      </label>
+      <label>タイトル（空欄なら自動）
+        <input id="addTitle" placeholder="例：Morning routine">
+      </label>
+      <label>字幕（文字起こし）を貼り付け
+        <textarea id="addCues" placeholder="0:00&#10;Hi everyone, welcome back&#10;0:03&#10;today I'm going to..."></textarea>
+      </label>
+      <div class="muted" id="parsePreview">字幕を貼ると、読み取れた行数がここに出ます。</div>
+      <div class="help">
+        <b>字幕のコピーのしかた</b><br>
+        ① YouTubeで動画を開き、説明欄の「…もっと見る」→ いちばん下の「文字起こしを表示」を押す<br>
+        ② 右に出た字幕の、最初の時間（0:00）の前からマウスで押したまま、いちばん下までなぞって選ぶ<br>
+        ③ <kbd>⌘</kbd>+<kbd>C</kbd> でコピー → 上の欄をクリックして <kbd>⌘</kbd>+<kbd>V</kbd><br>
+        ※ 「0:03 Hello」のような1行形式や、.srt / .vtt 字幕ファイルの中身でも読み取れます。
+      </div>
+      <div><button class="primary" id="addSave">この動画を登録</button></div>
+    </div>
+
+    <h3 style="margin-top:28px">登録した動画</h3>
+    <div class="vlist" id="videoList"></div>
+
+    <h3 style="margin-top:28px">バックアップ</h3>
+    <div class="form card">
+      <div class="muted">データはこのMacのブラウザの中だけに保存されます。ときどき「ファイルに書き出す」で保存しておくと安心です。別のブラウザや端末に移すときも、このファイルを読み込みます。</div>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="primary" id="bkFile">⬇ ファイルに書き出す</button>
+        <label class="btnlike"><input type="file" id="bkLoad" accept=".json,application/json" hidden><span>⬆ ファイルから読み込む</span></label>
+        <button id="bkShow">文字で表示</button>
+        <button id="bkCopy">コピー</button>
+      </div>
+      <textarea id="bkText" placeholder="ここにバックアップの文字が出ます。ファイルから読み込むか、文字を貼り付けて「この内容で復元する」を押すと元にもどります。"></textarea>
+      <div><button class="danger" id="bkRestore">この内容で復元する</button></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal" hidden><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ========== データ ========== */
+const KEY = 'tangocho-v1';
+const CATS = ['動詞','熟語','名詞','形容詞','その他'];
+let state = loadState();
+function loadState(){
+  try{ const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if(s && s.videos && s.words) return s; }catch(e){}
+  return {videos:[], words:[], lastVideo:null};
+}
+function saveState(){
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch(e){ toast('保存できませんでした（ブラウザの設定を確認してください）'); }
+}
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = t => { t = Math.max(0, Math.floor(t)); const h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=t%60;
+  return (h? h+':'+String(m).padStart(2,'0') : m) + ':' + String(s).padStart(2,'0'); };
+const norm = s => s.toLowerCase().replace(/[’]/g,"'").replace(/[^a-z' -]/g,' ').replace(/\s+/g,' ').trim();
+
+function toast(msg){ const el=$('#toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove('show'),1800); }
+
+/* ========== 字幕の読み取り ========== */
+function parseTime(s){ return s.split(':').map(Number).reduce((a,b)=>a*60+b,0); }
+function parseTranscript(raw){
+  const lines = raw.replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(Boolean);
+  const tsOnly = /^(?:\d{1,2}:)?\d{1,2}:\d{2}$/;
+  const tsLead = /^((?:\d{1,2}:)?\d{1,2}:\d{2})\s+(.+)$/;
+  const arrow  = /^((?:\d{1,2}:)?\d{1,2}:\d{2})[.,]\d{1,3}\s*-->/;
+  const spoken = /^(\d+\s*(時間|分|秒)\s*)+$|^(\d+\s+(hours?|minutes?|seconds?),?\s*)+$/i;
+  const isSrt = lines.some(l => arrow.test(l));
+  const cues = []; let cur = null;
+  for(const l of lines){
+    let m;
+    if(l === 'WEBVTT' || spoken.test(l)) continue;
+    if(isSrt && /^\d+$/.test(l)) continue;
+    if((m = l.match(arrow))){ cur = {t:parseTime(m[1]), text:''}; cues.push(cur); continue; }
+    if(tsOnly.test(l)){ cur = {t:parseTime(l), text:''}; cues.push(cur); continue; }
+    if((m = l.match(tsLead))){ cur = {t:parseTime(m[1]), text:m[2]}; cues.push(cur); continue; }
+    if(cur) cur.text += (cur.text ? ' ' : '') + l;
+  }
+  return cues.map(c => ({t:c.t, text:c.text.replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim()}))
+             .filter(c => c.text).sort((a,b) => a.t - b.t);
+}
+function ytId(url){
+  url = url.trim();
+  if(/^[\w-]{11}$/.test(url)) return url;
+  const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+function tokens(text){
+  const out = []; const re = /[A-Za-z][A-Za-z'’-]*[A-Za-z]|[A-Za-z]/g; let m;
+  while((m = re.exec(text))) out.push({w:m[0], s:m.index, e:m.index + m[0].length});
+  return out;
+}
+function cueEnd(cues, i){ return i+1 < cues.length ? cues[i+1].t : cues[i].t + 4; }
+
+/* ========== 単語の一致（かんたんな変化形も） ========== */
+function forms(key){
+  const f = new Set([key, key+'s', key+'es', key+'ed', key+'d', key+'ing', key+"'s"]);
+  if(key.endsWith('e')) f.add(key.slice(0,-1)+'ing');
+  if(key.endsWith('y')){ f.add(key.slice(0,-1)+'ies'); f.add(key.slice(0,-1)+'ied'); }
+  if(/[^aeiou][aeiou][bdgmnprt]$/.test(key)){ const d = key + key.slice(-1); f.add(d+'ed'); f.add(d+'ing'); }
+  return f;
+}
+/* cueのテキストの中で key が出てくる位置（文字の範囲）を返す */
+function findIn(text, key){
+  const hits = []; const parts = key.split(' ');
+  const tk = tokens(text); const low = tk.map(t => norm(t.w));
+  for(let i=0; i<tk.length; i++){
+    let ok = true;
+    for(let j=0; j<parts.length; j++){
+      const w = low[i+j]; if(w === undefined){ ok=false; break; }
+      if(!forms(parts[j]).has(w)){ ok=false; break; }
+    }
+    if(ok) hits.push({s:tk[i].s, e:tk[i+parts.length-1].e, wi:i});
+  }
+  return hits;
+}
+
+/* ========== 画面切り替え ========== */
+let view = 'watch';
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.view));
+function show(v){
+  view = v;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  ['watch','words','add'].forEach(x => $('#view-'+x).hidden = x !== v);
+  if(v !== 'watch'){ clearSel(); if(player && playerReady) try{ player.pauseVideo(); }catch(e){} }
+  if(v === 'words') renderWords();
+  if(v === 'add') renderVideoList();
+  if(v === 'watch') renderCues(true);
+}
+
+/* ========== YouTube プレーヤー ========== */
+let player = null, playerReady = false, curVideo = null;
+let segStart = 0, stopAt = null, segPaused = false, pending = null;
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player('player', {
+    width:'100%', height:'100%',
+    playerVars:{playsinline:1, rel:0, modestbranding:1, cc_load_policy:0},
+    events:{
+      onReady:() => { playerReady = true; const v = getVideo(state.lastVideo) || state.videos[0]; if(v) openVideo(v.id, pending ? pending.t : 0, !!pending, pending && pending.stop); pending = null; },
+      onStateChange:e => {
+        if(e.data === YT.PlayerState.PLAYING && curVideo){
+          const v = getVideo(curVideo);
+          if(v && v.autoTitle){ try{ const t = player.getVideoData().title; if(t){ v.title = t; v.autoTitle = false; saveState(); renderVideoSelect(); } }catch(err){} }
+          renderSegChips();
+        }
+      }
+    }
+  });
+};
+(function loadApi(){
+  const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
+  s.onerror = () => { $('#emptyPlayer').innerHTML = 'YouTubeを読み込めませんでした。<br>インターネット接続を確認してください。'; $('#emptyPlayer').hidden = false; };
+  document.head.appendChild(s);
+})();
+const getVideo = id => state.videos.find(v => v.id === id);
+const now = () => { try{ return player.getCurrentTime() || 0; }catch(e){ return 0; } };
+
+function openVideo(id, t = 0, autoplay = false, stop = null){
+  const v = getVideo(id); if(!v) return;
+  $('#emptyPlayer').hidden = true;
+  if(!playerReady){ pending = {t, stop}; curVideo = id; return; }
+  const changed = curVideo !== id || !openVideo.loaded;
+  curVideo = id; state.lastVideo = id; saveState();
+  $('#videoSelect').value = id;
+  segStart = Math.floor(t/60)*60; stopAt = stop; segPaused = false;
+  if(changed){
+    openVideo.loaded = true;
+    if(autoplay) player.loadVideoById({videoId:v.yt, startSeconds:t});
+    else player.cueVideoById({videoId:v.yt, startSeconds:t});
+  } else {
+    player.seekTo(t, true); if(autoplay) player.playVideo();
+  }
+  updateSegLabel(); renderSegChips(); renderCues(true);
+}
+function playFrom(t, stop = null, seg = null){
+  if(!playerReady || !curVideo) return;
+  if(seg !== null) segStart = seg;
+  else if(t < segStart || t >= segStart + 60) segStart = Math.floor(t/60)*60;
+  stopAt = stop; segPaused = false;
+  player.seekTo(Math.max(0,t), true); player.playVideo();
+  updateSegLabel(); renderSegChips(); renderCues(true);
+}
+
+/* 1分の区切り */
+function duration(){
+  let d = 0; try{ d = player.getDuration() || 0; }catch(e){}
+  if(!d){ const v = getVideo(curVideo); if(v && v.cues.length) d = v.cues[v.cues.length-1].t + 5; }
+  return d;
+}
+function updateSegLabel(){ $('#segLabel').textContent = fmt(segStart) + '〜' + fmt(segStart + 60); }
+function renderSegChips(){
+  const d = duration(); const box = $('#segChips'); box.innerHTML = '';
+  if(!d || !curVideo) return;
+  for(let s = 0; s < d; s += 60){
+    const b = document.createElement('button'); b.textContent = fmt(s);
+    if(s === segStart) b.className = 'on';
+    b.onclick = () => playFrom(s, null, s);
+    box.appendChild(b);
+  }
+}
+$('#prevSeg').onclick = () => { const s = Math.max(0, segStart - 60); playFrom(s, null, s); };
+$('#nextSeg').onclick = () => { const d = duration(); const s = segStart + 60; if(d && s >= d) return toast('ここが最後の1分です'); playFrom(s, null, s); };
+$('#replaySeg').onclick = () => playFrom(segStart, null, segStart);
+$('#startGo').onclick = () => {
+  const v = $('#startInput').value.trim().replace('：',':');
+  if(!/^(\d+:)?\d+(:\d{1,2})?$/.test(v)) return toast('「2:30」のように入力してください');
+  const t = v.includes(':') ? parseTime(v) : Number(v);
+  playFrom(t, null, t);
+};
+$('#startNow').onclick = () => { const t = Math.floor(now()); $('#startInput').value = fmt(t); playFrom(t, null, t); };
+
+/* 再生位置の見張り：1分で止める・くりかえしを止める・字幕のハイライト */
+let lastCue = -1;
+setInterval(() => {
+  if(!playerReady || !curVideo || view !== 'watch') return;
+  let st; try{ st = player.getPlayerState(); }catch(e){ return; }
+  const t = now();
+  if(st === 1){
+    if(stopAt !== null && t >= stopAt){ player.pauseVideo(); stopAt = null; }
+    else if(stopAt === null){
+      if(t >= segStart + 60 && t < segStart + 61.5 && !segPaused){ player.pauseVideo(); segPaused = true; toast('1分おわり！'); }
+      else if(t < segStart - 1 || t >= segStart + 61.5){ segStart = Math.floor(t/60)*60; segPaused = false; updateSegLabel(); renderSegChips(); renderCues(true); }
+    }
+  }
+  const v = getVideo(curVideo); if(!v) return;
+  let ci = -1; for(let i=0;i<v.cues.length;i++){ if(v.cues[i].t <= t + 0.15) ci = i; else break; }
+  if(ci !== lastCue){
+    lastCue = ci;
+    document.querySelectorAll('.cue.now').forEach(e => e.classList.remove('now'));
+    const el = document.querySelector('.cue[data-ci="'+ci+'"]');
+    if(el){ el.classList.add('now'); if(!sel) el.scrollIntoView({block:'nearest', behavior:'smooth'}); }
+  }
+}, 200);
+
+/* ========== 字幕の表示と単語タップ ========== */
+let sel = null; // {ci, a, b}
+function savedKeys(){ return state.words.map(w => w.key); }
+function renderCues(keepSel){
+  const box = $('#cuesBox'); const v = getVideo(curVideo);
+  if(!keepSel) clearSel();
+  if(!v){ box.innerHTML = '<p class="muted" style="padding:12px">動画をえらぶと、ここに字幕が出ます。</p>'; return; }
+  const keys = savedKeys(); let html = '';
+  v.cues.forEach((c, i) => {
+    if(!(c.t < segStart + 60 && cueEnd(v.cues, i) > segStart)) return;
+    const tk = tokens(c.text);
+    const knownIdx = new Set();
+    keys.forEach(k => findIn(c.text, k).forEach(h => { const n = k.split(' ').length; for(let j=0;j<n;j++) knownIdx.add(h.wi + j); }));
+    let out = '', pos = 0;
+    tk.forEach((t, wi) => {
+      out += esc(c.text.slice(pos, t.s));
+      const cls = ['w']; if(knownIdx.has(wi)) cls.push('known');
+      if(sel && sel.ci === i && wi >= sel.a && wi <= sel.b) cls.push('sel');
+      out += '<span class="'+cls.join(' ')+'" data-ci="'+i+'" data-wi="'+wi+'">'+esc(t.w)+'</span>';
+      pos = t.e;
+    });
+    out += esc(c.text.slice(pos));
+    html += '<div class="cue'+(i===lastCue?' now':'')+'" data-ci="'+i+'"><span class="ts">'+fmt(c.t)+'</span><span>'+out+'</span></div>';
+  });
+  box.innerHTML = html || '<p class="muted" style="padding:12px">この1分には字幕がありません。</p>';
+}
+$('#cuesBox').addEventListener('click', e => {
+  const w = e.target.closest('.w');
+  if(!w){ const cue = e.target.closest('.cue'); if(cue){ const v=getVideo(curVideo); const c=v.cues[+cue.dataset.ci]; if(c) playFrom(c.t, cueEnd(v.cues,+cue.dataset.ci)+0.3); } return; }
+  const ci = +w.dataset.ci, wi = +w.dataset.wi;
+  if(!sel || sel.ci !== ci) sel = {ci, a:wi, b:wi};
+  else if(sel.a === sel.b && sel.a === wi){ clearSel(); renderCues(true); return; }
+  else if(sel.a === sel.b && Math.abs(wi - sel.a) <= 6) sel = {ci, a:Math.min(wi, sel.a), b:Math.max(wi, sel.a)};
+  else sel = {ci, a:wi, b:wi};
+  renderCues(true); showActionBar();
+});
+function selInfo(){
+  const v = getVideo(curVideo); if(!sel || !v) return null;
+  const c = v.cues[sel.ci]; const tk = tokens(c.text);
+  const phrase = c.text.slice(tk[sel.a].s, tk[sel.b].e);
+  const t0 = c.t, t1 = cueEnd(v.cues, sel.ci);
+  const est = t0 + (tk[sel.a].s / Math.max(1, c.text.length)) * (t1 - t0);
+  return {phrase, sentence:c.text, est, t0, t1};
+}
+function showActionBar(){ const i = selInfo(); if(!i) return; $('#selText').textContent = i.phrase; $('#actionBar').hidden = false; }
+function clearSel(){ sel = null; $('#actionBar').hidden = true; }
+$('#actClose').onclick = () => { clearSel(); renderCues(true); };
+function repeatStop(est, t1){ return Math.max(est + 2, Math.min(t1 + 0.4, est + 4)); }
+$('#actRepeat').onclick = () => { const i = selInfo(); if(!i) return; playFrom(Math.max(0, i.est - 2), repeatStop(i.est, i.t1)); };
+$('#actSave').onclick = () => { const i = selInfo(); if(!i) return; openSaveSheet(i); };
+
+/* ========== 保存 ========== */
+function openSaveSheet(info){
+  const key0 = norm(info.phrase);
+  const exist = state.words.find(w => w.key === key0);
+  let cat = exist ? exist.cat : (key0.includes(' ') ? '熟語' : '動詞');
+  const sheet = $('#sheet');
+  sheet.innerHTML = `
+    <div class="muted">${exist ? 'すでに保存ずみ：この場面を追加します' : '単語を保存'}</div>
+    <h2><input id="svWord" value="${esc(exist ? exist.text : info.phrase)}" style="font-size:24px;font-weight:700"></h2>
+    <p class="muted" style="margin:6px 0 4px">元の形（goes → go など）に直してもOK</p>
+    <div class="chips" id="svCats">${CATS.map(c => `<button data-c="${c}" class="${c===cat?'on':''}">${c}</button>`).join('')}</div>
+    <label style="font-weight:600;font-size:14px;display:grid;gap:6px">かんたんな英語で意味
+      <textarea id="svMean" style="min-height:80px" placeholder="e.g. get up = to leave your bed in the morning">${esc(exist ? exist.mean : '')}</textarea>
+    </label>
+    <div class="help" style="margin-top:12px">“${esc(info.sentence)}”</div>
+    <div class="row"><button class="primary" id="svOk">★ 保存</button><button id="svCancel">やめる</button></div>`;
+  openModal(); setTimeout(() => $('#svMean').focus(), 50);
+  sheet.querySelectorAll('#svCats button').forEach(b => b.onclick = () => { cat = b.dataset.c; sheet.querySelectorAll('#svCats button').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#svCancel').onclick = closeModal;
+  $('#svOk').onclick = () => {
+    const text = $('#svWord').value.trim(); const key = norm(text);
+    if(!key) return toast('単語を入れてください');
+    let w = state.words.find(x => x.key === key);
+    if(!w){ w = {id:uid(), key, text, cat, mean:'', scenes:[], plays:0, created:Date.now()}; state.words.push(w); }
+    w.text = text; w.cat = cat; w.mean = $('#svMean').value.trim();
+    if(!w.scenes.some(s => s.vid === curVideo && Math.abs(s.t - info.est) < 2)) w.scenes.push({vid:curVideo, t:info.est, sentence:info.sentence});
+    if(exist && exist.id !== w.id){ /* 形を変えて別の単語になった場合はそのまま残す */ }
+    saveState(); closeModal(); clearSel(); renderCues(true); toast('「'+text+'」を保存しました');
+  };
+}
+
+/* ========== 単語リスト ========== */
+let catFilter = 'すべて', sortBy = 'new';
+function allScenes(w){
+  const out = [];
+  state.videos.forEach(v => v.cues.forEach((c, i) => {
+    findIn(c.text, w.key).forEach(h => {
+      const t1 = cueEnd(v.cues, i);
+      const est = c.t + (h.s / Math.max(1, c.text.length)) * (t1 - c.t);
+      out.push({vid:v.id, title:v.title, t:est, t1, text:c.text, s:h.s, e:h.e});
+    });
+  }));
+  return out;
+}
+function renderWords(){
+  $('#catChips').innerHTML = ['すべて', ...CATS].map(c => `<button data-c="${c}" class="${c===catFilter?'on':''}">${c} ${c==='すべて'?state.words.length:state.words.filter(w=>w.cat===c).length}</button>`).join('');
+  $('#catChips').querySelectorAll('button').forEach(b => b.onclick = () => { catFilter = b.dataset.c; renderWords(); });
+  const sorts = {new:'新しい順', abc:'ABC順', less:'練習が少ない順'};
+  $('#sortChips').innerHTML = Object.entries(sorts).map(([k,l]) => `<button data-s="${k}" class="${k===sortBy?'on':''}">${l}</button>`).join('');
+  $('#sortChips').querySelectorAll('button').forEach(b => b.onclick = () => { sortBy = b.dataset.s; renderWords(); });
+  let list = state.words.filter(w => catFilter === 'すべて' || w.cat === catFilter);
+  if(sortBy === 'new') list.sort((a,b) => b.created - a.created);
+  if(sortBy === 'abc') list.sort((a,b) => a.key.localeCompare(b.key));
+  if(sortBy === 'less') list.sort((a,b) => a.plays - b.plays);
+  $('#wordEmpty').hidden = state.words.length > 0;
+  $('#wordGrid').innerHTML = list.map(w => {
+    const n = allScenes(w).length;
+    return `<button class="wcard" data-id="${w.id}">
+      <span class="tag">${esc(w.cat)}</span>
+      <span class="word">${esc(w.text)}</span>
+      <span class="mean">${w.mean ? esc(w.mean) : '<i>意味はまだ</i>'}</span>
+      <span class="foot"><span>🎬 ${n}場面</span><span>🔁 ${w.plays}回</span></span>
+    </button>`;
+  }).join('');
+  $('#wordGrid').querySelectorAll('.wcard').forEach(b => b.onclick = () => openWord(b.dataset.id));
+}
+function openWord(id){
+  const w = state.words.find(x => x.id === id); if(!w) return;
+  const scenes = allScenes(w);
+  const first = w.scenes[0];
+  const sheet = $('#sheet');
+  const yg = 'https://youglish.com/pronounce/' + encodeURIComponent(w.key) + '/english';
+  sheet.innerHTML = `
+    <span class="tag">${esc(w.cat)}</span>
+    <h2 style="margin-top:6px">${esc(w.text)}</h2>
+    <div id="meanBox" style="font-size:17px;line-height:1.6;margin:6px 0">${w.mean ? esc(w.mean) : '<span class="muted">意味はまだ書いていません</span>'}</div>
+    <div class="row">
+      ${first ? '<button class="primary" id="wdFirst">🔁 保存した場面を2秒前から</button>' : ''}
+      <button id="wdEdit">✏️ 意味・種類を直す</button>
+    </div>
+    <h3 style="margin:20px 0 4px">🎬 この単語が出てくる場面（${scenes.length}）</h3>
+    <div class="muted">登録したすべての動画の字幕から探しています。タップで2秒前から再生。</div>
+    <div id="sceneList">${scenes.map((s, i) => `
+      <button class="scene" data-i="${i}">
+        <div class="meta">${esc(s.title)} ・ ${fmt(s.t)}</div>
+        <div>${esc(s.text.slice(0, s.s))}<mark>${esc(s.text.slice(s.s, s.e))}</mark>${esc(s.text.slice(s.e))}</div>
+      </button>`).join('') || '<p class="muted">まだ見つかりません。動画を増やすと出てきます。</p>'}</div>
+    <div class="help" style="margin-top:16px">ほかのYouTube動画でも聞いてみる：<br>
+      <a href="${yg}" target="_blank" rel="noopener">YouGlishで「${esc(w.text)}」の場面を探す ↗</a><br>
+      <span class="muted">（別のタブで開きます）</span></div>
+    <div class="row" style="justify-content:space-between">
+      <button id="wdClose">とじる</button>
+      <button class="danger" id="wdDel">この単語を削除</button>
+    </div>`;
+  openModal();
+  const go = (vid, t, t1) => { w.plays++; saveState(); closeModal(); show('watch'); if(curVideo !== vid) openVideo(vid, Math.max(0, t - 2), true, repeatStop(t, t1)); else playFrom(Math.max(0, t - 2), repeatStop(t, t1)); };
+  if(first) $('#wdFirst').onclick = () => {
+    const v = getVideo(first.vid); if(!v) return toast('元の動画が削除されています');
+    let t1 = first.t + 3; const i = v.cues.findIndex(c => c.t > first.t); if(i >= 0) t1 = v.cues[i].t;
+    go(first.vid, first.t, t1);
+  };
+  sheet.querySelectorAll('.scene').forEach(b => b.onclick = () => { const s = scenes[+b.dataset.i]; go(s.vid, s.t, s.t1); });
+  $('#wdEdit').onclick = () => editWord(w);
+  $('#wdClose').onclick = closeModal;
+  $('#wdDel').onclick = () => {
+    const b = $('#wdDel');
+    if(b.dataset.sure){ state.words = state.words.filter(x => x.id !== w.id); saveState(); closeModal(); renderWords(); toast('削除しました'); }
+    else { b.dataset.sure = 1; b.textContent = 'もう一度押すと削除'; }
+  };
+}
+function editWord(w){
+  let cat = w.cat; const sheet = $('#sheet');
+  sheet.innerHTML = `
+    <h2><input id="edWord" value="${esc(w.text)}" style="font-size:24px;font-weight:700"></h2>
+    <div class="chips" id="edCats" style="margin-top:12px">${CATS.map(c => `<button data-c="${c}" class="${c===cat?'on':''}">${c}</button>`).join('')}</div>
+    <label style="font-weight:600;font-size:14px;display:grid;gap:6px">かんたんな英語で意味
+      <textarea id="edMean" style="min-height:90px">${esc(w.mean)}</textarea></label>
+    <div class="row"><button class="primary" id="edOk">保存</button><button id="edCancel">もどる</button></div>`;
+  sheet.querySelectorAll('#edCats button').forEach(b => b.onclick = () => { cat = b.dataset.c; sheet.querySelectorAll('#edCats button').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#edCancel').onclick = () => openWord(w.id);
+  $('#edOk').onclick = () => {
+    const text = $('#edWord').value.trim(); if(!norm(text)) return toast('単語を入れてください');
+    w.text = text; w.key = norm(text); w.cat = cat; w.mean = $('#edMean').value.trim();
+    saveState(); renderWords(); openWord(w.id); toast('直しました');
+  };
+}
+
+/* ========== モーダル ========== */
+function openModal(){ $('#modal').hidden = false; }
+function closeModal(){ $('#modal').hidden = true; }
+$('#modal').addEventListener('click', e => { if(e.target.id === 'modal') closeModal(); });
+
+/* ========== 動画の追加・一覧 ========== */
+$('#addCues').addEventListener('input', () => {
+  const c = parseTranscript($('#addCues').value);
+  $('#parsePreview').textContent = c.length ? `字幕を ${c.length} 行 読み取りました（${fmt(c[0].t)}〜${fmt(c[c.length-1].t)}）` : '時間（0:03 など）つきの字幕が見つかりません。';
+});
+$('#addSave').onclick = () => {
+  const yt = ytId($('#addUrl').value);
+  if(!yt) return toast('YouTubeのURLを確認してください');
+  const cues = parseTranscript($('#addCues').value);
+  if(!cues.length) return toast('字幕が読み取れませんでした');
+  const title = $('#addTitle').value.trim();
+  const v = {id:uid(), yt, title: title || ('動画 ' + (state.videos.length + 1)), autoTitle: !title, cues, added:Date.now()};
+  state.videos.push(v); saveState();
+  $('#addUrl').value = $('#addTitle').value = $('#addCues').value = ''; $('#parsePreview').textContent = '';
+  renderVideoSelect(); toast('登録しました'); show('watch'); openVideo(v.id, 0, false);
+};
+function renderVideoList(){
+  $('#videoList').innerHTML = state.videos.map(v => `
+    <div class="vrow"><div><b>${esc(v.title)}</b><div class="muted">字幕 ${v.cues.length}行・${fmt(v.cues[v.cues.length-1].t)}まで</div></div>
+    <div style="display:flex;gap:6px"><button data-open="${v.id}">見る</button><button class="danger" data-del="${v.id}">削除</button></div></div>`).join('')
+    || '<p class="muted">まだありません。</p>';
+  $('#videoList').querySelectorAll('[data-open]').forEach(b => b.onclick = () => { show('watch'); openVideo(b.dataset.open, 0, false); });
+  $('#videoList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    if(!b.dataset.sure){ b.dataset.sure = 1; b.textContent = 'もう一度押す'; return; }
+    state.videos = state.videos.filter(v => v.id !== b.dataset.del);
+    if(curVideo === b.dataset.del){ curVideo = null; openVideo.loaded = false; try{ player.stopVideo(); }catch(e){} $('#emptyPlayer').hidden = state.videos.length > 0; }
+    saveState(); renderVideoSelect(); renderVideoList(); toast('削除しました（保存した単語は残ります）');
+  });
+}
+function renderVideoSelect(){
+  const s = $('#videoSelect');
+  s.innerHTML = state.videos.length ? state.videos.map(v => `<option value="${v.id}">${esc(v.title)}</option>`).join('') : '<option>（動画がありません）</option>';
+  if(curVideo) s.value = curVideo;
+}
+$('#videoSelect').onchange = e => openVideo(e.target.value, 0, false);
+
+/* ========== バックアップ ========== */
+$('#bkShow').onclick = () => { $('#bkText').value = JSON.stringify(state); toast('作りました。コピーして保管してください'); };
+$('#bkCopy').onclick = async () => {
+  if(!$('#bkText').value) $('#bkText').value = JSON.stringify(state);
+  try{ await navigator.clipboard.writeText($('#bkText').value); toast('コピーしました'); }
+  catch(e){ $('#bkText').select(); toast('選択したので「コピー」を押してください'); }
+};
+$('#bkRestore').onclick = () => {
+  const b = $('#bkRestore');
+  let data; try{ data = JSON.parse($('#bkText').value); }catch(e){ return toast('バックアップの文字が正しくありません'); }
+  if(!data || !Array.isArray(data.videos) || !Array.isArray(data.words)) return toast('バックアップの文字が正しくありません');
+  if(!b.dataset.sure){ b.dataset.sure = 1; b.textContent = '今のデータを上書きします。もう一度押す'; return; }
+  state = data; saveState(); b.dataset.sure = ''; b.textContent = 'この内容で復元する';
+  curVideo = null; openVideo.loaded = false; renderVideoSelect(); renderVideoList(); toast('復元しました');
+  if(state.videos[0]) openVideo(state.videos[0].id, 0, false);
+};
+
+
+/* ========== Mac向け：なぞって熟語を選ぶ ========== */
+let justDragged = false;
+$('#cuesBox').addEventListener('mouseup', () => {
+  const ns = window.getSelection(); if(!ns || ns.isCollapsed) return;
+  const spans = [...document.querySelectorAll('#cuesBox .w')].filter(w => ns.containsNode(w, true));
+  if(!spans.length) return;
+  const ci = +spans[0].dataset.ci;
+  const same = spans.filter(w => +w.dataset.ci === ci).map(w => +w.dataset.wi);
+  sel = {ci, a:Math.min(...same), b:Math.max(...same)};
+  ns.removeAllRanges(); justDragged = true; setTimeout(() => justDragged = false, 50);
+  renderCues(true); showActionBar();
+});
+$('#cuesBox').addEventListener('click', e => { if(justDragged){ e.stopImmediatePropagation(); justDragged = false; } }, true);
+
+/* ========== この動画で保存した単語 ========== */
+function renderVwords(){
+  const box = $('#vwords'), v = getVideo(curVideo);
+  if(!v){ box.hidden = true; return; }
+  const items = [];
+  state.words.forEach(w => {
+    for(let i = 0; i < v.cues.length; i++){
+      const h = findIn(v.cues[i].text, w.key)[0];
+      if(h){ const c = v.cues[i], t1 = cueEnd(v.cues, i); items.push({w, t:c.t + (h.s/Math.max(1,c.text.length))*(t1-c.t), t1}); break; }
+    }
+  });
+  box.hidden = !items.length;
+  $('#vwordList').innerHTML = items.map((x, i) => `<button data-i="${i}" title="${esc(x.w.mean||'')}">${esc(x.w.text)} <span class="muted">${fmt(x.t)}</span></button>`).join('');
+  $('#vwordList').querySelectorAll('button').forEach(b => b.onclick = () => { const x = items[+b.dataset.i]; x.w.plays++; saveState(); playFrom(Math.max(0, x.t-2), repeatStop(x.t, x.t1)); });
+}
+const _renderCues = renderCues;
+renderCues = function(k){ _renderCues(k); renderVwords(); };
+
+/* ========== キーボード操作 ========== */
+document.addEventListener('keydown', e => {
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  if(!$('#modal').hidden){ if(e.key === 'Escape') closeModal(); return; }
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if(view !== 'watch') return;
+  const k = e.key.toLowerCase();
+  if(e.key === ' '){
+    e.preventDefault(); if(document.activeElement.tagName === 'BUTTON') document.activeElement.blur(); if(!playerReady || !curVideo) return;
+    try{ if(player.getPlayerState() === 1) player.pauseVideo(); else { stopAt = null; segPaused = false; player.playVideo(); } }catch(err){}
+  }
+  else if(e.key === 'ArrowLeft'){ e.preventDefault(); $('#prevSeg').click(); }
+  else if(e.key === 'ArrowRight'){ e.preventDefault(); $('#nextSeg').click(); }
+  else if(k === 'r'){
+    if(sel) $('#actRepeat').click();
+    else if(lastCue >= 0){ const v = getVideo(curVideo); const c = v.cues[lastCue]; playFrom(Math.max(0, c.t - 2), cueEnd(v.cues, lastCue) + 0.3); }
+  }
+  else if(k === 's'){ if(sel){ e.preventDefault(); $('#actSave').click(); } }
+  else if(e.key === 'Escape'){ clearSel(); renderCues(true); }
+});
+/* 保存画面で Enter（⌘+Enter）でも保存 */
+document.addEventListener('keydown', e => {
+  if($('#modal').hidden || e.key !== 'Enter') return;
+  const ok = $('#svOk') || $('#edOk'); if(!ok) return;
+  if(document.activeElement.tagName === 'TEXTAREA' && !e.metaKey) return;
+  e.preventDefault(); ok.click();
+});
+
+/* ========== バックアップ（ファイル） ========== */
+$('#bkFile').onclick = () => {
+  const d = new Date(); const name = `tangocho-backup-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(state)], {type:'application/json'}));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000); toast('ダウンロードに保存しました');
+};
+$('#bkLoad').onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  f.text().then(t => { $('#bkText').value = t; toast('読み込みました。「この内容で復元する」を押してください'); e.target.value = ''; });
+};
+
+/* ========== はじめ ========== */
+renderVideoSelect(); renderCues();
+if(state.videos.length){ $('#emptyPlayer').hidden = true; curVideo = (getVideo(state.lastVideo) || state.videos[0]).id; renderCues(); updateSegLabel(); }
+</script>
+</body>
+</html>
