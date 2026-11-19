@@ -40,6 +40,7 @@
   .player-wrap iframe,#player{position:absolute;inset:0;width:100%;height:100%}
   .empty-player{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ddd;
     text-align:center;padding:20px;font-size:15px;line-height:1.6}
+  .empty-player[hidden]{display:none}
   @media (min-width:900px){ .player-wrap{width:min(100%, calc((100vh - 290px) * 16 / 9))} }
   .seg-bar{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
   .seg-label{font-weight:700;font-size:18px;min-width:120px;text-align:center;font-variant-numeric:tabular-nums}
@@ -753,19 +754,23 @@ function ytGrab(APP){
       const tr = tracks.find(t => /^en/.test(t.languageCode) && t.kind !== 'asr') || tracks.find(t => /^en/.test(t.languageCode));
       if(!tr) throw 'この動画には英語の字幕がありません';
       const asr = tr.kind === 'asr';
-      const find = () => performance.getEntriesByType('resource').map(e => e.name).filter(u => {
-        if(u.indexOf('/api/timedtext') < 0) return false;
-        const s = new URL(u).searchParams;
-        return s.get('v') === vid && s.get('lang') === tr.languageCode && !s.get('tlang') && ((s.get('kind') === 'asr') === asr);
-      }).pop();
+      const seen = [];
+      try{ performance.setResourceTimingBufferSize(5000); }catch(e){}
+      const ob = new PerformanceObserver(l => l.getEntries().forEach(e => { if(e.name.indexOf('/api/timedtext') >= 0) seen.push(e.name); }));
+      ob.observe({type:'resource', buffered:true});
+      const okU = u => { const s = new URL(u).searchParams; return s.get('v') === vid && s.get('lang') === tr.languageCode && !s.get('tlang') && ((s.get('kind') === 'asr') === asr); };
+      const find = () => seen.concat(performance.getEntriesByType('resource').map(e => e.name).filter(u => u.indexOf('/api/timedtext') >= 0)).filter(okU).pop();
+      await new Promise(r => setTimeout(r, 100));
       let u = find();
       if(!u){
+        if(p.unloadModule) p.unloadModule('captions');
         if(p.loadModule) p.loadModule('captions');
         const tl = p.getOption('captions', 'tracklist', {includeAsr:true}) || [];
         const t2 = tl.find(t => t.languageCode === tr.languageCode && ((t.kind === 'asr') === asr));
         p.setOption('captions', 'track', t2 || {languageCode:tr.languageCode});
         for(let i = 0; i < 40 && !(u = find()); i++) await new Promise(r => setTimeout(r, 200));
       }
+      ob.disconnect();
       if(!u) throw '字幕を読み込めませんでした。動画を少し再生してから、もう一度押してください';
       const x = new URL(u); x.searchParams.set('fmt', 'json3');
       const j = await (await fetch(x, {credentials:'include'})).json();
