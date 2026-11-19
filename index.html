@@ -108,6 +108,10 @@
   .scene mark{background:var(--mark);border-radius:4px;padding:0 2px}
   .btnlike span{display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 14px;min-height:44px;cursor:pointer;font-weight:400}
   .bm{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:999px;cursor:grab}
+  .auto{margin-top:8px;display:grid;gap:6px}
+  .auto button{text-align:left;min-height:auto;padding:8px 12px;font-size:14px;line-height:1.45;border-radius:10px}
+  .auto button.on{border-color:var(--accent);background:var(--accent-soft)}
+  .auto .src{font-size:11px;color:var(--sub);margin-left:6px}
   .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
     padding:10px 16px;border-radius:12px;z-index:60;font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none}
   .toast.show{opacity:1}
@@ -175,6 +179,7 @@
   <section id="view-words" hidden>
     <div class="chips" id="catChips"></div>
     <div class="chips" id="sortChips"></div>
+    <div style="margin:-4px 0 14px"><button id="bulkAuto">🔎 意味が空の単語に、まとめて意味を入れる</button></div>
     <div class="grid" id="wordGrid"></div>
     <p class="muted" id="wordEmpty" hidden>まだ単語がありません。動画の字幕で単語をタップして「★ 保存」してください。</p>
   </section>
@@ -494,12 +499,18 @@ function openSaveSheet(info){
     <p class="muted" style="margin:6px 0 4px">元の形（goes → go など）に直してもOK</p>
     <div class="chips" id="svCats">${CATS.map(c => `<button data-c="${c}" class="${c===cat?'on':''}">${c}</button>`).join('')}</div>
     <label style="font-weight:600;font-size:14px;display:grid;gap:6px">かんたんな英語で意味
-      <textarea id="svMean" style="min-height:80px" placeholder="e.g. get up = to leave your bed in the morning">${esc(exist ? exist.mean : '')}</textarea>
+      <textarea id="svMean" style="min-height:80px" placeholder="自動で探します。自分で書いてもOK">${esc(exist ? exist.mean : '')}</textarea>
     </label>
+    <div class="auto" id="svAuto"></div>
     <div class="help" style="margin-top:12px">“${esc(info.sentence)}”</div>
     <div class="row"><button class="primary" id="svOk">★ 保存</button><button id="svCancel">やめる</button></div>`;
   openModal(); setTimeout(() => $('#svMean').focus(), 50);
-  sheet.querySelectorAll('#svCats button').forEach(b => b.onclick = () => { cat = b.dataset.c; sheet.querySelectorAll('#svCats button').forEach(x => x.classList.toggle('on', x === b)); });
+  let typed = !!(exist && exist.mean);
+  $('#svMean').addEventListener('input', () => typed = true);
+  const runAuto = () => showAuto($('#svAuto'), $('#svWord').value, cat, $('#svMean'), () => !typed);
+  runAuto();
+  $('#svWord').addEventListener('change', runAuto);
+  sheet.querySelectorAll('#svCats button').forEach(b => b.onclick = () => { cat = b.dataset.c; sheet.querySelectorAll('#svCats button').forEach(x => x.classList.toggle('on', x === b)); runAuto(); });
   $('#svCancel').onclick = closeModal;
   $('#svOk').onclick = () => {
     const text = $('#svWord').value.trim(); const key = norm(text);
@@ -561,6 +572,7 @@ function openWord(id){
     <div class="row">
       ${first ? '<button class="primary" id="wdFirst">🔁 保存した場面を2秒前から</button>' : ''}
       <button id="wdEdit">✏️ 意味・種類を直す</button>
+      ${w.mean ? '' : '<button id="wdAuto">🔎 意味を自動で入れる</button>'}
     </div>
     <h3 style="margin:20px 0 4px">🎬 この単語が出てくる場面（${scenes.length}）</h3>
     <div class="muted">登録したすべての動画の字幕から探しています。タップで2秒前から再生。</div>
@@ -585,6 +597,7 @@ function openWord(id){
   };
   sheet.querySelectorAll('.scene').forEach(b => b.onclick = () => { const s = scenes[+b.dataset.i]; go(s.vid, s.t, s.t1); });
   $('#wdEdit').onclick = () => editWord(w);
+  if($('#wdAuto')) $('#wdAuto').onclick = async () => { $('#wdAuto').textContent = '探しています…'; const res = await autoMeaning(w.text, w.cat); if(res.length){ w.mean = res[0].text; saveState(); renderWords(); openWord(w.id); toast('意味を入れました'); } else { $('#wdAuto').textContent = '見つかりませんでした'; } };
   $('#wdClose').onclick = closeModal;
   $('#wdDel').onclick = () => {
     const b = $('#wdDel');
@@ -599,8 +612,10 @@ function editWord(w){
     <div class="chips" id="edCats" style="margin-top:12px">${CATS.map(c => `<button data-c="${c}" class="${c===cat?'on':''}">${c}</button>`).join('')}</div>
     <label style="font-weight:600;font-size:14px;display:grid;gap:6px">かんたんな英語で意味
       <textarea id="edMean" style="min-height:90px">${esc(w.mean)}</textarea></label>
+    <div class="auto" id="edAuto"></div>
     <div class="row"><button class="primary" id="edOk">保存</button><button id="edCancel">もどる</button></div>`;
   sheet.querySelectorAll('#edCats button').forEach(b => b.onclick = () => { cat = b.dataset.c; sheet.querySelectorAll('#edCats button').forEach(x => x.classList.toggle('on', x === b)); });
+  showAuto($('#edAuto'), w.text, cat, $('#edMean'), () => !$('#edMean').value.trim());
   $('#edCancel').onclick = () => openWord(w.id);
   $('#edOk').onclick = () => {
     const text = $('#edWord').value.trim(); if(!norm(text)) return toast('単語を入れてください');
@@ -809,6 +824,90 @@ window.addEventListener('storage', e => {
   state = loadState(); renderVideoSelect(); renderCues(true);
   if(view === 'words') renderWords(); if(view === 'add') renderVideoList();
 });
+
+
+/* ========== 意味を自動で探す（かんたん英語） ========== */
+const POS_OF = {'動詞':['verb','phrasal verb'], '名詞':['noun'], '形容詞':['adjective'], '熟語':['phrasal verb','expression','idiom','phrase','verb'], 'その他':[]};
+const autoCache = {};
+function cleanWiki(t){
+  let prev; do{ prev = t; t = t.replace(/\{\{[^{}]*\}\}/g, ''); }while(t !== prev);
+  return t.replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, '$1').replace(/'{2,}/g, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+function parseSimpleWiki(wt){
+  const defs = []; let pos = '', last = null;
+  wt.split('\n').forEach(line => {
+    const h = line.match(/^==+\s*([^=]+?)\s*==+\s*$/);
+    if(h){ pos = h[1].toLowerCase(); last = null; return; }
+    if(/^#\s/.test(line) || /^#[^:*#]/.test(line)){
+      const text = cleanWiki(line.replace(/^#\s*/, ''));
+      if(text.length > 3){ last = {pos, text, ex:'', src:'Simple English Wiktionary'}; defs.push(last); }
+      return;
+    }
+    if(/^#:/.test(line) && last && !last.ex) last.ex = cleanWiki(line.replace(/^#:\s*/, ''));
+  });
+  return defs;
+}
+function lemmas(w){
+  const out = [w];
+  if(w.includes(' ')){ const [h, ...rest] = w.split(' '); lemmas(h).slice(1).forEach(x => out.push([x, ...rest].join(' '))); return out; }
+  if(/ies$|ied$/.test(w)) out.push(w.slice(0,-3) + 'y');
+  if(/ing$/.test(w)){ const b = w.slice(0,-3); out.push(b, b + 'e'); if(/(.)\1$/.test(b)) out.push(b.slice(0,-1)); }
+  if(/ed$/.test(w)){ const b = w.slice(0,-2); out.push(w.slice(0,-1), b); if(/(.)\1$/.test(b)) out.push(b.slice(0,-1)); }
+  if(/es$/.test(w)) out.push(w.slice(0,-2));
+  if(/s$/.test(w) && !/ss$/.test(w)) out.push(w.slice(0,-1));
+  return [...new Set(out)];
+}
+async function fromSimple(word){
+  for(const w of lemmas(word)){
+    try{
+      const r = await fetch('https://simple.wiktionary.org/w/api.php?action=parse&format=json&origin=*&prop=wikitext&redirects=1&page=' + encodeURIComponent(w));
+      const j = await r.json();
+      if(j.parse){ const d = parseSimpleWiki(j.parse.wikitext['*']); if(d.length) return d; }
+    }catch(e){}
+  }
+  return [];
+}
+async function fromDictApi(word){
+  for(const w of lemmas(word)){
+    try{
+      const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(w));
+      if(!r.ok) continue;
+      const j = await r.json(); const out = [];
+      j.forEach(e => (e.meanings || []).forEach(m => (m.definitions || []).forEach(d => out.push({pos:m.partOfSpeech, text:d.definition, ex:d.example || '', src:'Free Dictionary'}))));
+      if(out.length) return out.sort((a,b) => a.text.length - b.text.length);
+    }catch(e){}
+  }
+  return [];
+}
+async function autoMeaning(word, cat){
+  const key = norm(word); if(!key) return [];
+  if(!autoCache[key]){
+    let d = await fromSimple(key);
+    if(!d.length) d = await fromDictApi(key);
+    autoCache[key] = d;
+  }
+  const want = POS_OF[cat] || [];
+  const rank = x => { const i = want.findIndex(p => x.pos.indexOf(p) === 0); return i < 0 ? 99 : i; };
+  return autoCache[key].map((x, i) => ({...x, i})).sort((a,b) => rank(a) - rank(b) || a.i - b.i).slice(0, 5);
+}
+async function showAuto(box, word, cat, ta, canFill){
+  const ticket = (showAuto.n = (showAuto.n || 0) + 1);
+  box.innerHTML = '<span class="muted">🔎 かんたんな英語の意味を探しています…</span>';
+  const res = await autoMeaning(word, cat);
+  if(ticket !== showAuto.n || !box.isConnected) return;
+  if(!res.length){ box.innerHTML = '<span class="muted">辞書に見つかりませんでした。自分で書いてください。</span>'; return; }
+  if(canFill()) ta.value = res[0].text;
+  box.innerHTML = '<span class="muted">候補（クリックで入れかえ）</span>' + res.map((x, i) =>
+    `<button data-i="${i}" class="${ta.value === x.text ? 'on' : ''}" title="${esc(x.ex)}"><b>${esc(x.pos)}</b> ${esc(x.text)}${x.ex ? `<br><i class="muted">e.g. ${esc(x.ex)}</i>` : ''}<span class="src">${esc(x.src)}</span></button>`).join('');
+  box.querySelectorAll('button').forEach(b => b.onclick = () => { ta.value = res[+b.dataset.i].text; box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+}
+$('#bulkAuto').onclick = async () => {
+  const b = $('#bulkAuto'); const todo = state.words.filter(w => !w.mean);
+  if(!todo.length) return toast('意味が空の単語はありません');
+  let n = 0;
+  for(const w of todo){ b.textContent = `探しています… ${n+1}/${todo.length}`; const r = await autoMeaning(w.text, w.cat); if(r.length){ w.mean = r[0].text; n++; } }
+  saveState(); renderWords(); b.textContent = '🔎 意味が空の単語に、まとめて意味を入れる'; toast(`${n}語に意味を入れました`);
+};
 
 /* ========== はじめ ========== */
 renderVideoSelect(); renderCues();
