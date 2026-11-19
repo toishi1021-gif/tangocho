@@ -106,6 +106,7 @@
   .scene .meta{font-size:12px;color:var(--sub)}
   .scene mark{background:var(--mark);border-radius:4px;padding:0 2px}
   .btnlike span{display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 14px;min-height:44px;cursor:pointer;font-weight:400}
+  .bm{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:999px;cursor:grab}
   .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
     padding:10px 16px;border-radius:12px;z-index:60;font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none}
   .toast.show{opacity:1}
@@ -179,6 +180,17 @@
 
   <!-- 動画を追加 -->
   <section id="view-add" hidden>
+    <div class="form card" style="margin-bottom:20px;border-color:var(--accent)">
+      <b style="font-size:17px">かんたん取り込み（おすすめ）</b>
+      <div class="help" style="background:var(--accent-soft)">
+        ① 下の緑のボタンを、ブラウザの<b>ブックマークバーにドラッグ</b>して置く（バーが見えないときは <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>）<br>
+        ② YouTubeで英語の動画を開く<br>
+        ③ ブックマークバーの「📥 たんご帳へ」をクリック → 新しいタブでたんご帳が開いて、字幕つきで登録されます
+      </div>
+      <div><a id="bmLink" class="bm" href="#">📥 たんご帳へ</a> <span class="muted">← これをブックマークバーへドラッグ</span></div>
+      <div class="muted">英語の字幕（自動生成でもOK）がある動画で使えます。きちんとした字幕があればそちらを優先します。</div>
+    </div>
+    <h3>手動で貼り付ける</h3>
     <div class="form card">
       <label>YouTubeのURL
         <input id="addUrl" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
@@ -727,9 +739,76 @@ $('#bkLoad').onchange = e => {
   f.text().then(t => { $('#bkText').value = t; toast('読み込みました。「この内容で復元する」を押してください'); e.target.value = ''; });
 };
 
+
+/* ========== かんたん取り込み（ブックマークレット） ========== */
+function ytGrab(APP){
+  (async () => {
+    const q = new URLSearchParams(location.search), vid = q.get('v');
+    if(!/(^|\.)youtube\.com$/.test(location.hostname) || !vid){ alert('YouTubeの動画ページで押してください'); return; }
+    const w = window.open('about:blank', '_blank');
+    try{
+      const p = document.querySelector('#movie_player');
+      const pr = p && p.getPlayerResponse ? p.getPlayerResponse() : null;
+      const tracks = (pr && pr.captions && pr.captions.playerCaptionsTracklistRenderer && pr.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+      const tr = tracks.find(t => /^en/.test(t.languageCode) && t.kind !== 'asr') || tracks.find(t => /^en/.test(t.languageCode));
+      if(!tr) throw 'この動画には英語の字幕がありません';
+      const asr = tr.kind === 'asr';
+      const find = () => performance.getEntriesByType('resource').map(e => e.name).filter(u => {
+        if(u.indexOf('/api/timedtext') < 0) return false;
+        const s = new URL(u).searchParams;
+        return s.get('v') === vid && s.get('lang') === tr.languageCode && !s.get('tlang') && ((s.get('kind') === 'asr') === asr);
+      }).pop();
+      let u = find();
+      if(!u){
+        if(p.loadModule) p.loadModule('captions');
+        const tl = p.getOption('captions', 'tracklist', {includeAsr:true}) || [];
+        const t2 = tl.find(t => t.languageCode === tr.languageCode && ((t.kind === 'asr') === asr));
+        p.setOption('captions', 'track', t2 || {languageCode:tr.languageCode});
+        for(let i = 0; i < 40 && !(u = find()); i++) await new Promise(r => setTimeout(r, 200));
+      }
+      if(!u) throw '字幕を読み込めませんでした。動画を少し再生してから、もう一度押してください';
+      const x = new URL(u); x.searchParams.set('fmt', 'json3');
+      const j = await (await fetch(x, {credentials:'include'})).json();
+      const c = (j.events || []).filter(e => e.segs).map(e => ({t:Math.round(e.tStartMs / 100) / 10, x:e.segs.map(s => s.utf8).join('').replace(/\s+/g, ' ').trim()})).filter(e => e.x);
+      if(!c.length) throw '字幕が空でした';
+      const d = {y:vid, n:(pr.videoDetails && pr.videoDetails.title) || document.title.replace(/ - YouTube$/, ''), c};
+      const url = APP + '#import=' + encodeURIComponent(JSON.stringify(d));
+      if(w) w.location.href = url; else location.href = url;
+    }catch(e){ if(w) w.close(); alert(String(e)); }
+  })();
+}
+(function setupBookmarklet(){
+  const app = location.origin + location.pathname;
+  const a = $('#bmLink');
+  a.href = 'javascript:' + encodeURIComponent('(' + ytGrab.toString() + ')(' + JSON.stringify(app) + ')');
+  a.addEventListener('click', e => { e.preventDefault(); toast('クリックではなく、ブックマークバーへドラッグしてください'); });
+})();
+function handleImport(){
+  if(location.hash.indexOf('#import=') !== 0) return;
+  let d; try{ d = JSON.parse(decodeURIComponent(location.hash.slice(8))); }catch(e){ toast('取り込みに失敗しました'); return; }
+  try{ history.replaceState(null, '', location.pathname); }catch(e){}
+  if(!d || !/^[\w-]{11}$/.test(d.y) || !Array.isArray(d.c)) return;
+  const cues = d.c.map(c => ({t:+c.t || 0, text:String(c.x || '').trim()}))
+                  .filter(c => c.text && !/^\[[^\]]*\]$/.test(c.text)).sort((a,b) => a.t - b.t);
+  if(!cues.length) return toast('字幕が空でした');
+  let v = state.videos.find(x => x.yt === d.y);
+  if(v){ v.cues = cues; if(d.n){ v.title = d.n; v.autoTitle = false; } }
+  else { v = {id:uid(), yt:d.y, title:d.n || ('動画 ' + (state.videos.length + 1)), autoTitle:!d.n, cues, added:Date.now()}; state.videos.push(v); }
+  state.lastVideo = v.id; saveState();
+  renderVideoSelect(); show('watch'); openVideo(v.id, 0, false); curVideo = v.id; renderCues(true); updateSegLabel();
+  setTimeout(() => toast('「' + v.title + '」を登録しました'), 300);
+}
+/* ほかのタブで登録・保存したら、このタブにも反映 */
+window.addEventListener('storage', e => {
+  if(e.key !== KEY) return;
+  state = loadState(); renderVideoSelect(); renderCues(true);
+  if(view === 'words') renderWords(); if(view === 'add') renderVideoList();
+});
+
 /* ========== はじめ ========== */
 renderVideoSelect(); renderCues();
 if(state.videos.length){ $('#emptyPlayer').hidden = true; curVideo = (getVideo(state.lastVideo) || state.videos[0]).id; renderCues(); updateSegLabel(); }
+handleImport();
 </script>
 </body>
 </html>
