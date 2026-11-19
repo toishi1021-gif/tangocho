@@ -874,7 +874,7 @@ async function fromDictApi(word){
       if(!r.ok) continue;
       const j = await r.json(); const out = [];
       j.forEach(e => (e.meanings || []).forEach(m => (m.definitions || []).forEach(d => out.push({pos:m.partOfSpeech, text:d.definition, ex:d.example || '', src:'Free Dictionary'}))));
-      if(out.length) return out.sort((a,b) => a.text.length - b.text.length);
+      if(out.length) return out.filter(x => x.text.length < 140).concat(out.filter(x => x.text.length >= 140));
     }catch(e){}
   }
   return [];
